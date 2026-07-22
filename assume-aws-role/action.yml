@@ -14,7 +14,6 @@ inputs:
     default: "3600"
 
 runs:
-  using: composite
   steps:
     - name: Assume AWS IAM role
       uses: aws-actions/configure-aws-credentials@v6.1.0
