@@ -1,0 +1,30 @@
+name: Register ECS Task Definition
+description: Registers a new revision of an ECS task definition from a container definitions file.
+
+inputs:
+  family:
+    description: Task definition family to register a new revision for
+    required: true
+  taskdef-path:
+    description: Path to a JSON file containing the container definitions
+    required: true
+
+outputs:
+  task-definition-arn:
+    description: ARN of the newly registered task definition revision
+    value: ${{ steps.register.outputs.task-definition-arn }}
+
+runs:
+  using: composite
+  steps:
+    - name: Register task definition
+      id: register
+      shell: bash
+      run: |
+        set -euo pipefail
+        arn=$(aws ecs register-task-definition \
+          --family "${{ inputs.family }}" \
+          --container-definitions "file://${{ inputs.taskdef-path }}" \
+          --query 'taskDefinition.taskDefinitionArn' \
+          --output text)
+        echo "task-definition-arn=${arn}" >> "$GITHUB_OUTPUT"
