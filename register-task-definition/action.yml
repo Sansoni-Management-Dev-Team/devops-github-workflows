@@ -8,6 +8,26 @@ inputs:
   taskdef-path:
     description: Path to a JSON file containing the container definitions
     required: true
+  network-mode:
+    description: Task network mode
+    required: false
+    default: awsvpc
+  requires-compatibilities:
+    description: Launch type compatibility
+    required: false
+    default: FARGATE
+  cpu:
+    description: Task-level CPU units
+    required: true
+  memory:
+    description: Task-level memory (MiB)
+    required: true
+  execution-role-arn:
+    description: ECS task execution role ARN
+    required: true
+  task-role-arn:
+    description: ECS task role ARN
+    required: true
 
 outputs:
   task-definition-arn:
@@ -25,6 +45,12 @@ runs:
         arn=$(aws ecs register-task-definition \
           --family "${{ inputs.family }}" \
           --container-definitions "file://${{ inputs.taskdef-path }}" \
+          --network-mode "${{ inputs.network-mode }}" \
+          --requires-compatibilities "${{ inputs.requires-compatibilities }}" \
+          --cpu "${{ inputs.cpu }}" \
+          --memory "${{ inputs.memory }}" \
+          --execution-role-arn "${{ inputs.execution-role-arn }}" \
+          --task-role-arn "${{ inputs.task-role-arn }}" \
           --query 'taskDefinition.taskDefinitionArn' \
           --output text)
         echo "task-definition-arn=${arn}" >> "$GITHUB_OUTPUT"

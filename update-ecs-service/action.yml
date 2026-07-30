@@ -1,0 +1,45 @@
+name: Update ECS Service
+description: Updates an ECS service to a given task definition and desired count, forcing a new deployment.
+
+inputs:
+  cluster:
+    description: ECS cluster name
+    required: true
+  service:
+    description: ECS service name
+    required: true
+  task-definition-arn:
+    description: Task definition ARN (or family:revision) to deploy
+    required: true
+  desired-count:
+    description: Desired number of tasks
+    required: true
+  wait-for-stability:
+    description: Whether to wait for the service to reach a stable state
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Update service
+      shell: bash
+      run: |
+        set -euo pipefail
+        aws ecs update-service \
+          --cluster "${{ inputs.cluster }}" \
+          --service "${{ inputs.service }}" \
+          --task-definition "${{ inputs.task-definition-arn }}" \
+          --desired-count "${{ inputs.desired-count }}" \
+          --force-new-deployment \
+          --query 'service.serviceArn' \
+          --output text
+
+    - name: Wait for service to stabilize
+      if: inputs.wait-for-stability == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        aws ecs wait services-stable \
+          --cluster "${{ inputs.cluster }}" \
+          --services "${{ inputs.service }}"
