@@ -1,0 +1,146 @@
+name: Run ECS Task
+description: Runs a one-off (standalone) ECS task outside of a service, optionally waiting for it to finish and failing on a non-zero exit code.
+
+inputs:
+  cluster:
+    description: ECS cluster name
+    required: true
+  task-definition-arn:
+    description: Task definition ARN (or family:revision) to run
+    required: true
+  subnets:
+    description: Comma-separated subnet IDs for the task's network interface
+    required: true
+  security-groups:
+    description: Comma-separated security group IDs for the task's network interface
+    required: true
+  assign-public-ip:
+    description: Whether to assign a public IP (ENABLED or DISABLED)
+    required: false
+    default: DISABLED
+  launch-type:
+    description: Launch type to run the task with
+    required: false
+    default: FARGATE
+  container-name:
+    description: Main container name; used for the command override and the exit-code check (required when command is set)
+    required: false
+    default: ""
+  command:
+    description: 'Optional command override as a JSON array, e.g. ["npm", "run", "migrate"]'
+    required: false
+    default: ""
+  started-by:
+    description: Tag recorded in the task's startedBy field
+    required: false
+    default: github-actions
+  wait-for-completion:
+    description: Whether to wait for the task to stop and check container exit codes
+    required: false
+    default: "true"
+  timeout-minutes:
+    description: Maximum minutes to wait for the task to stop
+    required: false
+    default: "30"
+
+outputs:
+  task-arn:
+    description: ARN of the started task
+    value: ${{ steps.run.outputs.task-arn }}
+  exit-code:
+    description: Exit code of the essential container(s) (only set when waiting for completion)
+    value: ${{ steps.wait.outputs.exit-code }}
+
+runs:
+  using: composite
+  steps:
+    - name: Run task
+      id: run
+      shell: bash
+      env:
+        SUBNETS: ${{ inputs.subnets }}
+        SECURITY_GROUPS: ${{ inputs.security-groups }}
+        ASSIGN_PUBLIC_IP: ${{ inputs.assign-public-ip }}
+        CONTAINER_NAME: ${{ inputs.container-name }}
+        COMMAND: ${{ inputs.command }}
+      run: |
+        set -euo pipefail
+
+        network=$(jq -cn \
+          --arg subnets "$SUBNETS" \
+          --arg sgs "$SECURITY_GROUPS" \
+          --arg ip "$ASSIGN_PUBLIC_IP" \
+          '{awsvpcConfiguration: {
+              subnets: ($subnets | split(",") | map(gsub("\\s"; ""))),
+              securityGroups: ($sgs | split(",") | map(gsub("\\s"; ""))),
+              assignPublicIp: $ip}}')
+
+        overrides='{}'
+        if [ -n "$COMMAND" ]; then
+          if [ -z "$CONTAINER_NAME" ]; then
+            echo "::error::container-name is required when command is set"
+            exit 1
+          fi
+          overrides=$(jq -cn --arg name "$CONTAINER_NAME" --argjson cmd "$COMMAND" \
+            '{containerOverrides: [{name: $name, command: $cmd}]}')
+        fi
+
+        result=$(aws ecs run-task \
+          --cluster "${{ inputs.cluster }}" \
+          --task-definition "${{ inputs.task-definition-arn }}" \
+          --launch-type "${{ inputs.launch-type }}" \
+          --network-configuration "$network" \
+          --overrides "$overrides" \
+          --started-by "${{ inputs.started-by }}" \
+          --output json)
+
+        arn=$(echo "$result" | jq -r '.tasks[0].taskArn // empty')
+        if [ -z "$arn" ]; then
+          echo "::error::Failed to start task: $(echo "$result" | jq -c '.failures')"
+          exit 1
+        fi
+
+        echo "Started task ${arn}"
+        echo "task-arn=${arn}" >> "$GITHUB_OUTPUT"
+
+    - name: Wait for task to complete
+      id: wait
+      if: inputs.wait-for-completion == 'true'
+      shell: bash
+      env:
+        TASK_ARN: ${{ steps.run.outputs.task-arn }}
+        CONTAINER_NAME: ${{ inputs.container-name }}
+      run: |
+        set -euo pipefail
+
+        # Poll manually: `aws ecs wait tasks-stopped` gives up after 10 minutes
+        deadline=$(( $(date +%s) + ${{ inputs.timeout-minutes }} * 60 ))
+        while true; do
+          task=$(aws ecs describe-tasks \
+            --cluster "${{ inputs.cluster }}" \
+            --tasks "$TASK_ARN" \
+            --query 'tasks[0]' \
+            --output json)
+          status=$(echo "$task" | jq -r '.lastStatus')
+          echo "Task status: ${status}"
+          [ "$status" = "STOPPED" ] && break
+          if [ "$(date +%s)" -ge "$deadline" ]; then
+            echo "::error::Timed out after ${{ inputs.timeout-minutes }} minutes waiting for task to stop"
+            exit 1
+          fi
+          sleep 10
+        done
+
+        echo "Stopped reason: $(echo "$task" | jq -r '.stoppedReason // "n/a"')"
+        echo "$task" | jq -r '.containers[] | "  \(.name): exitCode=\(.exitCode // "none") \(.reason // "")"'
+
+        # Only judge container-name when set, so killed sidecars don't fail the run.
+        # A container that never ran (e.g. image pull failure) has no exit code.
+        exit_code=$(echo "$task" | jq -r --arg name "$CONTAINER_NAME" \
+          '[.containers[] | select($name == "" or .name == $name) | .exitCode // 1] | max // 1')
+        echo "exit-code=${exit_code}" >> "$GITHUB_OUTPUT"
+
+        if [ "$exit_code" != "0" ]; then
+          echo "::error::Task exited with code ${exit_code}"
+          exit 1
+        fi
