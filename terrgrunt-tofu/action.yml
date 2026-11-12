@@ -1,0 +1,21 @@
+name: Install Terragrunt and OpenTofu
+description: Installs Terragrunt and OpenTofu at the specified versions.
+
+inputs:
+  terragrunt-version:
+    description: Terragrunt version to install
+    required: false
+    default: "1.1.1"
+  tofu-version:
+    description: OpenTofu version to install
+    required: false
+    default: "1.11.5"
+
+runs:
+  using: composite
+  steps:
+    - name: Install Terragrunt and OpenTofu
+      uses: gruntwork-io/terragrunt-action@v3
+      with:
+        tg_version: ${{ inputs.terragrunt-version }}
+        tofu_version: ${{ inputs.tofu-version }}
