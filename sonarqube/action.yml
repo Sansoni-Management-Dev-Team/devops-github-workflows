@@ -1,0 +1,45 @@
+name: SonarQube Scan
+description: >
+  Runs a SonarQube analysis (code quality and security) and fails when the
+  quality gate fails, so it can be used as a required pull request check.
+  Run the `checkout` action (full history, fetch-depth 0) before this one.
+
+inputs:
+  sonar-token:
+    description: SonarQube token used to authenticate the analysis
+    required: true
+  sonar-host-url:
+    description: SonarQube Server URL. Leave empty to use SonarQube Cloud
+    required: false
+    default: ""
+  project-base-dir:
+    description: Directory to analyze, relative to the repository root
+    required: false
+    default: "."
+  wait-for-quality-gate:
+    description: Wait for the quality gate result and fail the step if it fails
+    required: false
+    default: "true"
+  quality-gate-timeout:
+    description: Seconds to wait for the quality gate result before failing
+    required: false
+    default: "300"
+  args:
+    description: Extra scanner arguments, e.g. "-Dsonar.projectKey=my-project"
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: SonarQube scan
+      uses: SonarSource/sonarqube-scan-action@v7
+      env:
+        SONAR_TOKEN: ${{ inputs.sonar-token }}
+        SONAR_HOST_URL: ${{ inputs.sonar-host-url }}
+      with:
+        projectBaseDir: ${{ inputs.project-base-dir }}
+        args: >
+          -Dsonar.qualitygate.wait=${{ inputs.wait-for-quality-gate }}
+          -Dsonar.qualitygate.timeout=${{ inputs.quality-gate-timeout }}
+          ${{ inputs.args }}
