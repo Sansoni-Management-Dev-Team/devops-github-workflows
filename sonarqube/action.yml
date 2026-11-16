@@ -9,9 +9,9 @@ inputs:
     description: SonarQube token used to authenticate the analysis
     required: true
   sonar-host-url:
-    description: SonarQube Server URL. Leave empty to use SonarQube Cloud
+    description: SonarQube URL. Defaults to SonarQube Cloud; set it for a self-hosted SonarQube Server
     required: false
-    default: ""
+    default: "https://sonarcloud.io"
   project-base-dir:
     description: Directory to analyze, relative to the repository root
     required: false
