@@ -1,0 +1,26 @@
+name: Validate Tag
+description: Validates that a tag follows the vMAJOR.MINOR.PATCH[.N...][-prerelease] format. Exits 0 if valid, 1 otherwise.
+
+inputs:
+  tag:
+    description: Tag to validate (defaults to the ref name that triggered the workflow)
+    required: false
+    default: ${{ github.ref_name }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate tag format
+      shell: bash
+      env:
+        TAG: ${{ inputs.tag }}
+      run: |
+        regex='^v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)*(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$'
+
+        if [[ "$TAG" =~ $regex ]]; then
+          echo "Tag '$TAG' is valid."
+          exit 0
+        fi
+
+        echo "::error::Tag '$TAG' is invalid. Expected format: v0.0.1 (e.g. v1.2.3, v1.2.3.4, v1.2.3-rc)"
+        exit 1

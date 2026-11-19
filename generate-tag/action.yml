@@ -1,0 +1,86 @@
+name: Generate Tag
+description: Generates the next semver tag (vMAJOR.MINOR.PATCH[.HOTFIX]) from the latest existing tag. Exactly one bump type must be true.
+
+inputs:
+  major:
+    description: Bump MAJOR (v1.2.3 -> v2.0.0)
+    required: false
+    default: 'false'
+  minor:
+    description: Bump MINOR (v1.2.3 -> v1.3.0)
+    required: false
+    default: 'false'
+  patch:
+    description: Bump PATCH (v1.2.3 -> v1.2.4)
+    required: false
+    default: 'true'
+  hotfix:
+    description: Bump HOTFIX (v1.2.3 -> v1.2.3.1, v1.2.3.1 -> v1.2.3.2)
+    required: false
+    default: 'false'
+
+outputs:
+  latest-tag:
+    description: Latest existing tag (v0.0.0 if none)
+    value: ${{ steps.generate.outputs.latest-tag }}
+  new-tag:
+    description: Newly generated tag
+    value: ${{ steps.generate.outputs.new-tag }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check only one bump is true
+      shell: bash
+      env:
+        MAJOR: ${{ inputs.major }}
+        MINOR: ${{ inputs.minor }}
+        PATCH: ${{ inputs.patch }}
+        HOTFIX: ${{ inputs.hotfix }}
+      run: |
+        count=0
+        for v in "$MAJOR" "$MINOR" "$PATCH" "$HOTFIX"; do
+          [[ "$v" == "true" ]] && count=$((count + 1))
+        done
+
+        if [[ "$count" -ne 1 ]]; then
+          echo "::error::Exactly one of major, minor, patch, hotfix must be true (got $count). major=$MAJOR minor=$MINOR patch=$PATCH hotfix=$HOTFIX"
+          exit 1
+        fi
+
+    - name: Generate tag
+      id: generate
+      shell: bash
+      env:
+        MAJOR: ${{ inputs.major }}
+        MINOR: ${{ inputs.minor }}
+        PATCH: ${{ inputs.patch }}
+        HOTFIX: ${{ inputs.hotfix }}
+      run: |
+        git fetch --tags --force --quiet || true
+
+        # Only consider vX.Y.Z or vX.Y.Z.N tags (prerelease tags are ignored)
+        latest=$(git tag --list 'v*' \
+          | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$' \
+          | sed 's/^v//' \
+          | sort -V \
+          | tail -n 1)
+        latest="v${latest:-0.0.0}"
+
+        IFS='.' read -r major minor patch hotfix <<< "${latest#v}"
+
+        if [[ "$MAJOR" == "true" ]]; then
+          new="v$((major + 1)).0.0"
+        elif [[ "$MINOR" == "true" ]]; then
+          new="v${major}.$((minor + 1)).0"
+        elif [[ "$PATCH" == "true" ]]; then
+          new="v${major}.${minor}.$((patch + 1))"
+        else
+          new="v${major}.${minor}.${patch}.$(( ${hotfix:-0} + 1 ))"
+        fi
+
+        echo "Latest tag: $latest"
+        echo "New tag:    $new"
+
+        echo "latest-tag=$latest" >> "$GITHUB_OUTPUT"
+        echo "new-tag=$new" >> "$GITHUB_OUTPUT"

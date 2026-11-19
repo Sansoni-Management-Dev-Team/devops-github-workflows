@@ -9,7 +9,15 @@ inputs:
     description: SonarQube token used to authenticate the analysis
     required: true
   sonar-host-url:
-    description: SonarQube Server URL. Leave empty to use SonarQube Cloud
+    description: SonarQube URL. Defaults to SonarQube Cloud; set it for a self-hosted SonarQube Server
+    required: false
+    default: "https://sonarcloud.io"
+  organization:
+    description: SonarQube Cloud organization key
+    required: false
+    default: "sansoni-management-dev-team"
+  project-key:
+    description: SonarQube project key. Defaults to "<repo owner>_<repo name>"
     required: false
     default: ""
   project-base-dir:
@@ -40,6 +48,8 @@ runs:
       with:
         projectBaseDir: ${{ inputs.project-base-dir }}
         args: >
+          -Dsonar.organization=${{ inputs.organization }}
+          -Dsonar.projectKey=${{ inputs.project-key || format('{0}_{1}', github.repository_owner, github.event.repository.name) }}
           -Dsonar.qualitygate.wait=${{ inputs.wait-for-quality-gate }}
           -Dsonar.qualitygate.timeout=${{ inputs.quality-gate-timeout }}
           ${{ inputs.args }}
