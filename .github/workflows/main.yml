@@ -1,0 +1,45 @@
+---
+name: main
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: Sansoni-Management-Dev-Team/devops-github-workflows/checkout@main
+
+      - name: Validate YAML files
+        shell: bash
+        run: |
+          failed=0
+          while IFS= read -r -d '' file; do
+            if yq eval '.' "$file" > /dev/null 2> yq-error.log; then
+              echo "OK      $file"
+            else
+              echo "::error file=${file#./}::Invalid YAML: $(cat yq-error.log)"
+              echo "INVALID $file"
+              failed=1
+            fi
+          done < <(find . -path ./.git -prune -o -type f \( -name '*.yml' -o -name '*.yaml' \) -print0 | sort -z)
+          rm -f yq-error.log
+
+          if [ "$failed" -ne 0 ]; then
+            echo "One or more YAML files are invalid."
+            exit 1
+          fi
+          echo "All YAML files are valid."
