@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   validate:
-    runs-on: codebuild-system-ci-production-${{ github.run_id }}-${{ github.run_attempt }}
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: Sansoni-Management-Dev-Team/devops-github-workflows/checkout@main
