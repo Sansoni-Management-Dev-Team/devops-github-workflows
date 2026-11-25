@@ -32,6 +32,12 @@ inputs:
     description: Seconds to wait for the quality gate result before failing
     required: false
     default: "300"
+  pull-request-analysis:
+    description: >
+      On pull_request events, analyze the PR against its base branch so the
+      quality gate only checks the lines changed in the PR
+    required: false
+    default: "true"
   args:
     description: Extra scanner arguments, e.g. "-Dsonar.projectKey=my-project"
     required: false
@@ -52,4 +58,5 @@ runs:
           -Dsonar.projectKey=${{ inputs.project-key || format('{0}_{1}', github.repository_owner, github.event.repository.name) }}
           -Dsonar.qualitygate.wait=${{ inputs.wait-for-quality-gate }}
           -Dsonar.qualitygate.timeout=${{ inputs.quality-gate-timeout }}
+          ${{ (inputs.pull-request-analysis == 'true' && github.event.pull_request) && format('-Dsonar.pullrequest.key={0} -Dsonar.pullrequest.branch={1} -Dsonar.pullrequest.base={2}', github.event.pull_request.number, github.event.pull_request.head.ref, github.event.pull_request.base.ref) || '' }}
           ${{ inputs.args }}
